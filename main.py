@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 def main():
     uername = input("Username>> ")
     uernameFind = input("Username Find>> ")
+    ThreadPool = ThreadPoolExecutor(max_workers=10)
     rq = requests.Session()
     #Queue = queue.Queue(maxsize=200)
     data = rq.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [uername], "excludeBannedUsers": False})
