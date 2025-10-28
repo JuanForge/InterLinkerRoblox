@@ -1,1 +1,2 @@
 # InterLinkerRoblox
+⚠️ Disclaimer: This tool is intended for research and analysis on publicly available data and must not be used to bypass platform protections, harvest private user data, sell data, or train machine learning models on platform data. Respect Roblox Terms of Use and Creator Third‑Party App Policy. Use proxy rotation only for legitimate reasons; do not use this code to evade rate limits or bans. The authors assume no responsibility for misuse.
