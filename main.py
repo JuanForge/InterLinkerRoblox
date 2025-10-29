@@ -14,7 +14,12 @@ import traceback
 import itertools
 import pickle
 from yaspin import spinners
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+
+def log(msg: str):
+    if True == True:
+        sys.stdout.write(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC] {msg}\n")
 
 def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 0,
                    found_event: threading.Event = None, Cache: pickle = None, LockCache: threading.Lock = None) -> requests.Response:
@@ -25,23 +30,29 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
                 user_id = match.group(1)
                 with LockCache:
                     if user_id in Cache['type:1']:
-                        #print(f"Cache hit for user_id: {user_id}")
-                        return Cache['type:1'][user_id]
-                    #else:
-                        #print(f"Cache miss for user_id: {user_id}")
+                        log(f"Cache hit for user_id: {user_id}")
+                        return Cache['type:1'][user_id]["id"]
+                    else:
+                        log(f"Cache miss for user_id: {user_id}")
             
             data = req.request(method=method, url=url)
-            # time.sleep(random.uniform(2, 4))
             if data.status_code == 200:
                 if type == 0:
-                    JSON = data.json()
-                    JSON["data"][0]['id']
+                    JSON = {}
+                    JSON = data.json()["data"]
+                    #JSON["data"][0]['id']
+                    #JSON[""]
                     with LockCache:
-                        Cache['type:1'][user_id] = data
-                    return data
+                        Cache['type:1'][user_id] = {
+                            "id": [str(item["id"]) for item in JSON if item["id"] != -1],
+                            "updateTime": datetime.now(timezone.utc).date()
+                        }
+
+                        #print(Cache['type:1'])
+                    return JSON
             elif data.status_code == 429:
-                sys.stdout.write("Rate limit exceeded, sleeping for 5 seconds...\n")
-                time.sleep(5)
+                log("Rate limit exceeded, sleeping X seconds...")
+                time.sleep(random.uniform(8, 12))
                 continue
         except Exception as e:
             print(f"Error RequestsWapper: {e}")
@@ -78,30 +89,29 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
                                   type=0, found_event=found_event, Cache=Cache, LockCache=LockCache)
             if data is None:
                 return True
-            data.raise_for_status()
             #print(data.json())
     
-            for user in data.json()["data"]:
+            for user in data:
                 with lock:
                     nombre[0] += 1
-                user["id"] = str(user["id"])
+                user = str(user)
                 #user["id"] = str(5370327427)  # For testing purpose
                 #sys.stdout.write(user["id"] + "\n")
                 #print("\n" + user["id"] + "==" + IDuserFInd + "\n")
         
-                if user["id"] == IDuserFInd:
+                if user == IDuserFInd:
                     found_event.set()
                     with lock:
                         result.update({
                             "status": True,
-                            "username": user["name"],
-                            "id": user["id"],
-                            "intermediate": userQueue["intermediate"] + [user["id"]]
+                            "username": "username",
+                            "id": user,
+                            "intermediate": userQueue["intermediate"] + [user]
                         })
                     return True
                   #return {"status": True, "username": user["name"], "id": user["id"], "intermediate": [user["name"]]}
                 else:
-                  Queue.put({"IDuserFInd": IDuserFInd, "id": user["id"], "intermediate": userQueue["intermediate"] + [user["id"]]})
+                  Queue.put({"IDuserFInd": IDuserFInd, "id": user, "intermediate": userQueue["intermediate"] + [user]})
                   #iun = unit(rq, uernameFind, user["id"], Queue=Queue, Set=Set)
                   #if iun["status"]:
                   #    iun["intermediate"].append(user["name"])
@@ -109,6 +119,7 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
                       #return {"status": True, "username": user["username"], "id": user["id"]}
         except Exception as e:
           print(f"Error: {e}")
+          print(traceback.format_exc())
     return True
     #return {"status": False}
 
@@ -148,7 +159,11 @@ def main():
     ThreadPool = ThreadPoolExecutor(max_workers=None)
     Queue.put({"IDuserFInd": IDuserFInd, "id": IDuser, "intermediate": [IDuser]})
     
-    proxy = itertools.cycle(json.loads(open("config.json").read())["proxy"])
+    if os.path.exists("config.json"):
+        proxy = itertools.cycle(json.loads(open("config.json").read())["proxy"])
+    else:
+        raise Exception("config.json not found")
+    
     for _ in range(thread):
         ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache)
     print("Searching...")
@@ -170,6 +185,7 @@ def main():
     with open("Cache.pkl", "wb") as f:
         Cache['TotalTime'] += (time.monotonic() - start_time)
         print(f"Total time life Cache: {Cache['TotalTime']:.2f} seconds")
+        #print(Cache)
         pickle.dump(Cache, f)
 
 
