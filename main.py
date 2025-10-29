@@ -25,10 +25,10 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
                 user_id = match.group(1)
                 with LockCache:
                     if user_id in Cache['type:1']:
-                        print(f"Cache hit for user_id: {user_id}")
+                        #print(f"Cache hit for user_id: {user_id}")
                         return Cache['type:1'][user_id]
-                    else:
-                        print(f"Cache miss for user_id: {user_id}")
+                    #else:
+                        #print(f"Cache miss for user_id: {user_id}")
             
             data = req.request(method=method, url=url)
             # time.sleep(random.uniform(2, 4))
@@ -40,7 +40,7 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
                         Cache['type:1'][user_id] = data
                     return data
             elif data.status_code == 429:
-                print("Rate limit exceeded, sleeping for 5 seconds...")
+                sys.stdout.write("Rate limit exceeded, sleeping for 5 seconds...\n")
                 time.sleep(5)
                 continue
         except Exception as e:
