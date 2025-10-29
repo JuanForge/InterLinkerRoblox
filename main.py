@@ -120,7 +120,7 @@ def main():
     if os.path.exists("Cache.pkl"):
         Cache = pickle.load(open("Cache.pkl", "rb"))
     else:
-        Cache = {"type:1": {}}
+        Cache = {"type:1": {}, "TotalTime": 0.0}
     LockCache = threading.Lock()
 
     uername = input("Username>> ")
@@ -154,6 +154,7 @@ def main():
     print("Searching...")
     
     try:
+        start_time = time.monotonic()
         with yaspin.yaspin(spinner=spinners.Spinners.material, text="Process en cours...", color="red", timer=True) as e:
             while not found_event.is_set():
                 with lock:
@@ -163,9 +164,12 @@ def main():
     except KeyboardInterrupt:
         print("Interrupted by user")
         found_event.set()
+
     ThreadPool.shutdown(wait=True)
     print(result)
     with open("Cache.pkl", "wb") as f:
+        Cache['TotalTime'] += (time.monotonic() - start_time)
+        print(f"Total time life Cache: {Cache['TotalTime']:.2f} seconds")
         pickle.dump(Cache, f)
 
 
