@@ -16,24 +16,28 @@ import pickle
 from yaspin import spinners
 from concurrent.futures import ThreadPoolExecutor
 
-def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 0, found_event: threading.Event = None, Cache: pickle = None) -> requests.Response:
+def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 0,
+                   found_event: threading.Event = None, Cache: pickle = None, LockCache: threading.Lock = None) -> requests.Response:
     while not found_event.is_set():
         try:
             match = re.search(r"/users/(\d+)/friends", url)
             if match:
                 user_id = match.group(1)
-                if user_id in Cache['type:1']:
-                    print(f"Cache hit for user_id: {user_id}")
-                    return Cache['type:1'][user_id]
-                else:
-                    print(f"Cache miss for user_id: {user_id}")
+                with LockCache:
+                    if user_id in Cache['type:1']:
+                        print(f"Cache hit for user_id: {user_id}")
+                        return Cache['type:1'][user_id]
+                    else:
+                        print(f"Cache miss for user_id: {user_id}")
             
             data = req.request(method=method, url=url)
+            # time.sleep(random.uniform(2, 4))
             if data.status_code == 200:
                 if type == 0:
                     JSON = data.json()
                     JSON["data"][0]['id']
-                    Cache['type:1'][user_id] = data
+                    with LockCache:
+                        Cache['type:1'][user_id] = data
                     return data
             elif data.status_code == 429:
                 print("Rate limit exceeded, sleeping for 5 seconds...")
@@ -49,7 +53,8 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
 
 
 def worker(IDuserFInd: str, Queue: queue.Queue,
-            Set: set, lock: threading.Lock, found_event: threading.Event, result: dict, proxy, nombre: int, Cache: pickle) -> dict:
+            Set: set, lock: threading.Lock, found_event: threading.Event,
+            result: dict, proxy, nombre: int, Cache: pickle, LockCache: threading.Lock) -> dict:
     rq = requests.Session()
     rq.proxies.update({
         "http": proxy,
@@ -69,12 +74,12 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
         try:
             #print(f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends")
             #data = rq.get(f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends")
-            data = RequestsWapper(rq, f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends", method="GET", type=0, found_event=found_event, Cache=Cache)
+            data = RequestsWapper(rq, f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends", method="GET",
+                                  type=0, found_event=found_event, Cache=Cache, LockCache=LockCache)
             if data is None:
                 return True
             data.raise_for_status()
             #print(data.json())
-            time.sleep(random.uniform(2, 4))
     
             for user in data.json()["data"]:
                 with lock:
@@ -116,6 +121,7 @@ def main():
         Cache = pickle.load(open("Cache.pkl", "rb"))
     else:
         Cache = {"type:1": {}}
+    LockCache = threading.Lock()
 
     uername = input("Username>> ")
     uernameFind = input("Username Find>> ")
@@ -144,7 +150,7 @@ def main():
     
     proxy = itertools.cycle(json.loads(open("config.json").read())["proxy"])
     for _ in range(thread):
-        ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache)
+        ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache)
     print("Searching...")
     
     try:
