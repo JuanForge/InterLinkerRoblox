@@ -49,7 +49,7 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
                         }
 
                         #print(Cache['type:1'])
-                    return JSON
+                    return [str(item["id"]) for item in JSON if item["id"] != -1]
             elif data.status_code == 429:
                 log("Rate limit exceeded, sleeping X seconds...")
                 time.sleep(random.uniform(8, 12))
