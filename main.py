@@ -4,8 +4,8 @@ import sys
 import time
 import json
 import queue
-import yaspin
 import random
+import argparse
 import requests
 import threading
 
@@ -13,16 +13,14 @@ import traceback
 
 import itertools
 import pickle
-from yaspin import spinners
+from pympler import asizeof
+from yaspin import yaspin, Spinner
+from yaspin.spinners import Spinners
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
-def log(msg: str):
-    if True == True:
-        sys.stdout.write(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC] {msg}\n")
-
 def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 0,
-                   found_event: threading.Event = None, Cache: pickle = None, LockCache: threading.Lock = None) -> requests.Response:
+                   found_event: threading.Event = None, Cache: pickle = None, LockCache: threading.Lock = None, log = lambda x: None) -> requests.Response:
     while not found_event.is_set():
         try:
             match = re.search(r"/users/(\d+)/friends", url)
@@ -62,10 +60,9 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
     else:
         return None
 
-
 def worker(IDuserFInd: str, Queue: queue.Queue,
             Set: set, lock: threading.Lock, found_event: threading.Event,
-            result: dict, proxy, nombre: int, Cache: pickle, LockCache: threading.Lock) -> dict:
+            result: dict, proxy, nombre: int, Cache: pickle, LockCache: threading.Lock, log) -> dict:
     rq = requests.Session()
     rq.proxies.update({
         "http": proxy,
@@ -86,7 +83,7 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
             #print(f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends")
             #data = rq.get(f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends")
             data = RequestsWapper(rq, f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends", method="GET",
-                                  type=0, found_event=found_event, Cache=Cache, LockCache=LockCache)
+                                  type=0, found_event=found_event, Cache=Cache, LockCache=LockCache, log=log)
             if data is None:
                 return True
             #print(data.json())
@@ -126,16 +123,32 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
 
 
 def main():
-    thread = 8
+    parser = argparse.ArgumentParser(description="Mon programme InterLinkerRoblox")
+    parser.add_argument("--threads", type=int, default=10, help="Nombre de threads à utiliser")
+    parser.add_argument("--debug", action="store_true", help="Activer le mode debug")
+    parser.add_argument(
+        "--updateTimeCache",
+        type=int,
+        default=0,
+        help="Nombre de jours d'un bloc de cache avant sa mise à jour"
+    )
+    #parser.add_argument("--cache", type=str, help="Chemin du fichier cache")
+    
+    args = parser.parse_args()
+    for k, v in vars(args).items():
+        sys.stdout.write(f"--{k} {v}, ")
+    sys.stdout.write("\n")
+
+
+    def log(msg: str):
+        if args.debug:
+            sys.stdout.write(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC] {msg}\n")
 
     if os.path.exists("Cache.pkl"):
         Cache = pickle.load(open("Cache.pkl", "rb"))
     else:
         Cache = {"type:1": {}, "TotalTime": 0.0}
     LockCache = threading.Lock()
-
-    uername = input("Username>> ")
-    uernameFind = input("Username Find>> ")
     lock = threading.Lock()
     rq = requests.Session()
     Queue = queue.Queue(maxsize=0) # 2_000_000
@@ -143,37 +156,41 @@ def main():
     result = {"status": False}
     Set = set()
     nombre = [0]
-
-    data = rq.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [uername], "excludeBannedUsers": False})
-    data.raise_for_status()
-    IDuser = data.json()["data"][0]["id"]
-    IDuser = str(IDuser)
-    print(f"IDuser ID: {IDuser}" + "\n")
-
-    data = rq.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [uernameFind], "excludeBannedUsers": False})
-    data.raise_for_status()
-    IDuserFInd = data.json()["data"][0]["id"]
-    IDuserFInd = str(IDuserFInd)
-    print(f"IDuserFInd ID: {IDuserFInd}" + "\n")
-
     ThreadPool = ThreadPoolExecutor(max_workers=None)
-    Queue.put({"IDuserFInd": IDuserFInd, "id": IDuser, "intermediate": [IDuser]})
-    
-    if os.path.exists("config.json"):
-        proxy = itertools.cycle(json.loads(open("config.json").read())["proxy"])
-    else:
-        raise Exception("config.json not found")
-    
-    for _ in range(thread):
-        ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache)
-    print("Searching...")
-    
+    start_time = None
+
     try:
+        uername = input("Username>> ")
+        uernameFind = input("Username Find>> ")
+    
+        data = rq.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [uername], "excludeBannedUsers": False})
+        data.raise_for_status()
+        IDuser = data.json()["data"][0]["id"]
+        IDuser = str(IDuser)
+        print(f"IDuser ID: {IDuser}" + "\n")
+    
+        data = rq.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [uernameFind], "excludeBannedUsers": False})
+        data.raise_for_status()
+        IDuserFInd = data.json()["data"][0]["id"]
+        IDuserFInd = str(IDuserFInd)
+        print(f"IDuserFInd ID: {IDuserFInd}" + "\n")
+    
+        Queue.put({"IDuserFInd": IDuserFInd, "id": IDuser, "intermediate": [IDuser]})
+        
+        if os.path.exists("config.json"):
+            proxy = itertools.cycle(json.loads(open("config.json").read())["proxy"])
+        else:
+            raise Exception("config.json not found")
+        
+        for _ in range(args.threads):
+            ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache, log)
+        print("Searching...")
+        
         start_time = time.monotonic()
-        with yaspin.yaspin(spinner=spinners.Spinners.material, text="Process en cours...", color="red", timer=True) as e:
+        with yaspin(spinner=Spinner(Spinners.material.frames, 100 * 5), text="Process en cours...", color="red", timer=True) as e:
             while not found_event.is_set():
                 with lock:
-                    e.text = f"Users scanned: {len(Set)} | Queue size: {Queue.qsize()}, Threads: {threading.active_count()}, nombre: {nombre}"
+                    e.text = f"Users scanned: {len(Set)} | Queue size: {Queue.qsize()}, Threads: {threading.active_count()}, nombre: {nombre[0]}, Cache size: {asizeof.asizeof(Cache)/(1024*1024):.2f} MB"
                 time.sleep(1)
         print("Finished.")
     except KeyboardInterrupt:
@@ -183,8 +200,10 @@ def main():
     ThreadPool.shutdown(wait=True)
     print(result)
     with open("Cache.pkl", "wb") as f:
-        Cache['TotalTime'] += (time.monotonic() - start_time)
-        print(f"Total time life Cache: {Cache['TotalTime']:.2f} seconds")
+        if start_time:
+            Cache['TotalTime'] += (time.monotonic() - start_time)
+            print(f"Time session: {(time.monotonic() - start_time):.4f} seconds")
+        print(f"Total time life Cache: {Cache['TotalTime']:.4f} seconds")
         #print(Cache)
         pickle.dump(Cache, f)
 
