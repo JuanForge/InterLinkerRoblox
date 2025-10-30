@@ -118,6 +118,16 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
     return True
     #return {"status": False}
 
+def Gestion(lockQueue: threading.Lock, Queue: queue.Queue, found_event: threading.Event):
+    if True == False:
+        while not found_event.is_set():
+            time.sleep(5)
+            if Queue.qsize() > 20_000:
+                for _ in range(Queue.qsize() - 20_000):
+                    try:
+                        Queue.get_nowait()
+                    except queue.Empty:
+                        pass
 
 
 def main():
@@ -181,6 +191,8 @@ def main():
         else:
             raise Exception("config.json not found")
         
+        ThreadPool.submit(Gestion, lock, Queue, found_event)
+
         for _ in range(args.threads):
             ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache, log, lockNombre=lockNombre)
         print("Searching...")
