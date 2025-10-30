@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
 def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 0,
-                   found_event: threading.Event = None, Cache: pickle = None, LockCache: threading.Lock = None, log = lambda x: None) -> requests.Response:
+                   found_event: threading.Event = None, Cache: pickle = None, LockCache: threading.Lock = None, log = lambda x: None, lockNombre: threading.Lock = None, nombre=None) -> requests.Response:
     while not found_event.is_set():
         try:
             match = re.search(r"/users/(\d+)/friends", url)
@@ -28,10 +28,10 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
                 user_id = match.group(1)
                 with LockCache:
                     if user_id in Cache['type:1']:
-                        log(f"Cache hit for user_id: {user_id}")
+                        log(f"\033[0;32mCache hit for user_id: {user_id}\033[0m")
                         return Cache['type:1'][user_id]["id"]
                     else:
-                        log(f"Cache miss for user_id: {user_id}")
+                        log(f"\033[0;31mCache miss for user_id: {user_id}\033[0m")
             
             data = req.request(method=method, url=url)
             if data.status_code == 200:
@@ -40,16 +40,16 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
                     JSON = data.json()["data"]
                     #JSON["data"][0]['id']
                     #JSON[""]
+                    with lockNombre:
+                        nombre[0] += 1
                     with LockCache:
                         Cache['type:1'][user_id] = {
                             "id": [str(item["id"]) for item in JSON if item["id"] != -1],
                             "updateTime": datetime.now(timezone.utc).date()
                         }
-
-                        #print(Cache['type:1'])
                     return [str(item["id"]) for item in JSON if item["id"] != -1]
             elif data.status_code == 429:
-                log("Rate limit exceeded, sleeping X seconds...")
+                log("\033[0;93mRate limit exceeded, sleeping X seconds...\033[0m")
                 time.sleep(random.uniform(8, 12))
                 continue
         except Exception as e:
@@ -62,7 +62,7 @@ def RequestsWapper(req: requests.Session, url: str, method: str = "GET", type = 
 
 def worker(IDuserFInd: str, Queue: queue.Queue,
             Set: set, lock: threading.Lock, found_event: threading.Event,
-            result: dict, proxy, nombre: int, Cache: pickle, LockCache: threading.Lock, log) -> dict:
+            result: dict, proxy, nombre: int, Cache: pickle, LockCache: threading.Lock, log, lockNombre) -> dict:
     rq = requests.Session()
     rq.proxies.update({
         "http": proxy,
@@ -76,21 +76,19 @@ def worker(IDuserFInd: str, Queue: queue.Queue,
 
         with lock:
             if userQueue["id"] in Set:
-                Queue.task_done()
+                #Queue.task_done()
                 continue
             Set.add(userQueue["id"])
         try:
             #print(f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends")
             #data = rq.get(f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends")
             data = RequestsWapper(rq, f"https://friends.roblox.com/v1/users/{userQueue['id']}/friends", method="GET",
-                                  type=0, found_event=found_event, Cache=Cache, LockCache=LockCache, log=log)
+                                  type=0, found_event=found_event, Cache=Cache, LockCache=LockCache, log=log, lockNombre=lockNombre, nombre=nombre)
             if data is None:
                 return True
             #print(data.json())
     
             for user in data:
-                with lock:
-                    nombre[0] += 1
                 user = str(user)
                 #user["id"] = str(5370327427)  # For testing purpose
                 #sys.stdout.write(user["id"] + "\n")
@@ -150,13 +148,14 @@ def main():
         Cache = {"type:1": {}, "TotalTime": 0.0}
     LockCache = threading.Lock()
     lock = threading.Lock()
+    lockNombre = threading.Lock()
     rq = requests.Session()
     Queue = queue.Queue(maxsize=0) # 2_000_000
     found_event = threading.Event()
     result = {"status": False}
     Set = set()
     nombre = [0]
-    ThreadPool = ThreadPoolExecutor(max_workers=None)
+    ThreadPool = ThreadPoolExecutor(max_workers=2_000_000)
     start_time = None
 
     try:
@@ -183,14 +182,24 @@ def main():
             raise Exception("config.json not found")
         
         for _ in range(args.threads):
-            ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache, log)
+            ThreadPool.submit(worker, IDuserFInd, Queue, Set, lock, found_event, result, next(proxy), nombre, Cache, LockCache, log, lockNombre=lockNombre)
         print("Searching...")
         
         start_time = time.monotonic()
         with yaspin(spinner=Spinner(Spinners.material.frames, 100 * 5), text="Process en cours...", color="red", timer=True) as e:
             while not found_event.is_set():
-                with lock:
-                    e.text = f"Users scanned: {len(Set)} | Queue size: {Queue.qsize()}, Threads: {threading.active_count()}, nombre: {nombre[0]}, Cache size: {asizeof.asizeof(Cache)/(1024*1024):.2f} MB"
+                with lock, LockCache:
+                    elapsed = time.monotonic() - start_time
+                    users_scanned = len(Set)
+                    rpm = users_scanned / (elapsed / 60) if elapsed > 0 else 0
+                    e.text = (
+                        f"Users scanned: {users_scanned} | "
+                        f"Queue size: {Queue.qsize()} | "
+                        f"Threads: {threading.active_count()} | "
+                        f"nombre: {nombre[0]} | "
+                        f"Cache size: {asizeof.asizeof(Cache)/(1024*1024):.2f} MB | "
+                        f"Rate: {rpm:.2f} users/min"
+                    )
                 time.sleep(1)
         print("Finished.")
     except KeyboardInterrupt:
