@@ -1,8 +1,8 @@
 config.json
-Cache.pkl
 Proxy.txt
-Cache.json
-Cache (Copie).pkl
+Cache*.pkl
+Cache*.json
+.github
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
