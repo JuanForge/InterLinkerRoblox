@@ -1,3 +1,5 @@
 yaspin==3.3.0
 pympler
 requests[socks]
+orjson==3.11.4
+zstandard==0.25.0
