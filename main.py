@@ -182,6 +182,11 @@ def main():
         default=0,
         help="Nombre de jours d'un bloc de cache avant sa mise à jour"
     )
+    parser.add_argument(
+        '--no-config',
+        action='store_true',
+        help="Ignorer complètement le fichier de configuration et utiliser les valeurs par défaut"
+    )
     #parser.add_argument("--cache", type=str, help="Chemin du fichier cache")
     
     args = parser.parse_args()
@@ -272,7 +277,14 @@ def main():
                 liste.append({"rq": rq, "lock": threading.Lock()})
             proxy = itertools.cycle(liste)
         else:
-            raise Exception("config.json not found")
+            if args.no_config:
+                liste = []
+                for _ in range(8):
+                    rq = requests.Session()
+                    liste.append({"rq": rq, "lock": threading.Lock()})
+                proxy = itertools.cycle(liste)
+            else:
+                raise Exception("config.json not found, use --no-config.")
 
         ThreadPool.submit(Gestion, lock, Queue, found_event, windows_size=args.window_size, QueueEnable=QueueEnable, Cache=Cache, LockCache=LockCache)
 
