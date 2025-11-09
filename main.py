@@ -170,6 +170,8 @@ def Gestion(lockQueue: threading.Lock, Queue: queue.Queue, found_event: threadin
 
 def main():
     parser = argparse.ArgumentParser(description="Mon programme InterLinkerRoblox")
+    parser.add_argument("--findin", type=str, default=None, help="Username")
+    parser.add_argument("--findend", type=str, default=None, help="Username Find")
     parser.add_argument("--threads", type=int, default=1, help="Number of threads CPU to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode with detailed logging")
     parser.add_argument("--compress-queue", action="store_true", help="Enable compression of the queue")
@@ -235,8 +237,15 @@ def main():
     start_time = None
 
     try:
-        uername = input("Username>> ")
-        uernameFind = input("Username Find>> ")
+        if not args.findin:
+            uername = input("Username>> ")
+        else:
+            uername = args.findin
+        
+        if not args.findend:
+            uernameFind = input("Username Find>> ")
+        else:
+            uernameFind = args.findend
     
         data = rq.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [uername], "excludeBannedUsers": False})
         data.raise_for_status()
